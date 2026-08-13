@@ -1,7 +1,6 @@
 #include <windows.h>
 #include "resource.h"
 
-1 RT_MANIFEST "app.manifest"
 IDI_APP ICON "assets/app.ico"
 
 IDD_SETTINGS DIALOGEX 0, 0, 450, 275

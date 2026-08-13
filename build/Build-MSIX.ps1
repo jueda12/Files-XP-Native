@@ -52,7 +52,7 @@ if ($SbomPath) {
     $resolvedSbom = (Resolve-Path -LiteralPath $SbomPath).Path
     Copy-Item -LiteralPath $resolvedSbom -Destination $stage
 }
-Copy-Item -LiteralPath (Join-Path $repositoryRoot 'packaging\Package.appxmanifest') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'packaging\Package.appxmanifest') -Destination (Join-Path $stage 'AppxManifest.xml')
 Copy-Item -Path (Join-Path $repositoryRoot 'src\app\assets\*.png') -Destination (Join-Path $stage 'Assets')
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'Locales') -Destination $stage -Recurse
 

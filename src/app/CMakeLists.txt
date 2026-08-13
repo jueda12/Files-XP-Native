@@ -6,6 +6,7 @@ add_executable(FilesXPNative WIN32
     bulk_rename_worker.h
     app_window.cpp
     app_window.h
+    accessibility_guids.cpp
     explorer_browser_host.cpp
     explorer_browser_host.h
     flatten_worker.cpp
