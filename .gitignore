@@ -1,0 +1,9 @@
+.vs/
+out/
+artifacts/
+build-local/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+

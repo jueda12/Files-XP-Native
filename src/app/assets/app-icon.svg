@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="back" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9dc2ff"/>
+      <stop offset="1" stop-color="#245bd8"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8cf55"/>
+      <stop offset="1" stop-color="#e79a12"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#91e16d"/>
+      <stop offset="1" stop-color="#269222"/>
+    </linearGradient>
+  </defs>
+  <path d="M20 58c0-12 9-21 21-21h63l25 25h86c12 0 21 9 21 21v116c0 12-9 21-21 21H41c-12 0-21-9-21-21z" fill="url(#back)" stroke="#173b93" stroke-width="8"/>
+  <path d="M28 94h200l-18 112c-2 10-10 17-20 17H47c-10 0-18-7-20-17L12 119c-2-13 6-25 16-25z" fill="url(#front)" stroke="#995f08" stroke-width="7"/>
+  <path d="M31 106h184" stroke="#fff1a8" stroke-width="6" opacity=".8"/>
+  <circle cx="185" cy="181" r="48" fill="url(#badge)" stroke="#165f19" stroke-width="7"/>
+  <path d="M160 181l17 17 35-40" fill="none" stroke="white" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

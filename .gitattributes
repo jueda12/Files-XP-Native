@@ -1,0 +1,12 @@
+*.cpp text eol=crlf
+*.h text eol=crlf
+*.rc text eol=crlf
+*.manifest text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+CMakeLists.txt text eol=crlf
+CMakePresets.json text eol=crlf
+*.zip binary
+*.exe binary
