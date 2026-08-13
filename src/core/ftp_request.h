@@ -282,7 +282,7 @@ namespace filesxp::core
             ftp_detail::appendText(output, request.remoteName);
             if (output.size() > maxFtpRequestBytes)
             {
-                std::fill(output.begin(), output.end(), 0);
+                std::fill(output.begin(), output.end(), std::uint8_t{0});
                 return {};
             }
             const auto size = static_cast<std::uint32_t>(output.size());
@@ -292,7 +292,7 @@ namespace filesxp::core
         }
         catch (...)
         {
-            std::fill(output.begin(), output.end(), 0);
+            std::fill(output.begin(), output.end(), std::uint8_t{0});
             return {};
         }
     }

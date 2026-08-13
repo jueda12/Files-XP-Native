@@ -22,7 +22,10 @@
 #include "../core/windows_command_line.h"
 
 #include <commctrl.h>
+
 #include <oleacc.h>
+
+#include <UIAutomation.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <shellapi.h>
@@ -55,13 +58,241 @@ namespace filesxp::app
             "Shelf and Shell snapshot limits must stay aligned");
 
         struct WindowPlacement final
+
         {
+
             HWND window{};
+
             int x{};
+
             int y{};
+
             int width{};
+
             int height{};
+
         };
+
+
+
+        class AddressEditProvider final : public IRawElementProviderSimple, public IValueProvider
+
+        {
+
+        public:
+
+            explicit AddressEditProvider(HWND window) noexcept : window_(window) {}
+
+
+
+            HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                *result = nullptr;
+
+                if (iid == IID_IUnknown || iid == IID_IRawElementProviderSimple)
+
+                    *result = static_cast<IRawElementProviderSimple*>(this);
+
+                else if (iid == IID_IValueProvider)
+
+                    *result = static_cast<IValueProvider*>(this);
+
+                else
+
+                    return E_NOINTERFACE;
+
+                AddRef();
+
+                return S_OK;
+
+            }
+
+
+
+            ULONG STDMETHODCALLTYPE AddRef() override { return 1; }
+
+            ULONG STDMETHODCALLTYPE Release() override { return 1; }
+
+
+
+            HRESULT STDMETHODCALLTYPE get_ProviderOptions(ProviderOptions* result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                *result = ProviderOptions_ServerSideProvider;
+
+                return S_OK;
+
+            }
+
+
+
+            HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID pattern, IUnknown** result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                *result = nullptr;
+
+                if (pattern != UIA_ValuePatternId) return S_OK;
+
+                *result = static_cast<IValueProvider*>(this);
+
+                AddRef();
+
+                return S_OK;
+
+            }
+
+
+
+            HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID property, VARIANT* result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                VariantInit(result);
+
+                switch (property)
+
+                {
+
+                case UIA_ControlTypePropertyId:
+
+                    result->vt = VT_I4;
+
+                    result->lVal = UIA_EditControlTypeId;
+
+                    break;
+
+                case UIA_IsControlElementPropertyId:
+
+                case UIA_IsContentElementPropertyId:
+
+                    result->vt = VT_BOOL;
+
+                    result->boolVal = VARIANT_TRUE;
+
+                    break;
+
+                case UIA_IsEnabledPropertyId:
+
+                    result->vt = VT_BOOL;
+
+                    result->boolVal = IsWindowEnabled(window_) != FALSE ? VARIANT_TRUE : VARIANT_FALSE;
+
+                    break;
+
+                default:
+
+                    break;
+
+                }
+
+                return S_OK;
+
+            }
+
+
+
+            HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(IRawElementProviderSimple** result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                *result = nullptr;
+
+                return UiaHostProviderFromHwnd(window_, result);
+
+            }
+
+
+
+            HRESULT STDMETHODCALLTYPE SetValue(LPCWSTR value) override
+
+            {
+
+                if (value == nullptr) return E_INVALIDARG;
+
+                if (!IsWindow(window_)) return UIA_E_ELEMENTNOTAVAILABLE;
+
+                if (IsWindowEnabled(window_) == FALSE) return UIA_E_ELEMENTNOTENABLED;
+
+                return SetWindowTextW(window_, value) != FALSE ? S_OK : HRESULT_FROM_WIN32(GetLastError());
+
+            }
+
+
+
+            HRESULT STDMETHODCALLTYPE get_Value(BSTR* result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                *result = nullptr;
+
+                if (!IsWindow(window_)) return UIA_E_ELEMENTNOTAVAILABLE;
+
+                const int length = GetWindowTextLengthW(window_);
+
+                if (length < 0) return HRESULT_FROM_WIN32(GetLastError());
+
+                BSTR value = SysAllocStringLen(nullptr, static_cast<UINT>(length));
+
+                if (value == nullptr && length != 0) return E_OUTOFMEMORY;
+
+                if (GetWindowTextW(window_, value, length + 1) == 0 && length != 0)
+
+                {
+
+                    SysFreeString(value);
+
+                    return HRESULT_FROM_WIN32(GetLastError());
+
+                }
+
+                *result = value;
+
+                return S_OK;
+
+            }
+
+
+
+            HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* result) override
+
+            {
+
+                if (result == nullptr) return E_POINTER;
+
+                *result = (GetWindowLongPtrW(window_, GWL_STYLE) & ES_READONLY) != 0 ? TRUE : FALSE;
+
+                return S_OK;
+
+            }
+
+
+
+        private:
+
+            HWND window_{};
+
+        };
+
+
+
+        AddressEditProvider addressEditProvider{nullptr};
+
 
         struct AsyncProcessLaunch final
         {
@@ -774,7 +1005,8 @@ namespace filesxp::app
 
             {
 
-                services->SetHwndPropStr(window, OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_NAME, name);
+                services->SetHwndPropStr(window, static_cast<DWORD>(OBJID_CLIENT), CHILDID_SELF,
+                    PROPID_ACC_NAME, name);
 
                 services->Release();
 
@@ -959,6 +1191,12 @@ namespace filesxp::app
     LRESULT CALLBACK AppWindow::editProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR, DWORD_PTR referenceData)
     {
+        if (message == WM_GETOBJECT && lParam == static_cast<LPARAM>(UiaRootObjectId) &&
+            GetDlgCtrlID(window) == ControlId::address)
+        {
+            addressEditProvider = AddressEditProvider{window};
+            return UiaReturnRawElementProvider(window, wParam, lParam, &addressEditProvider);
+        }
         if (message == WM_KEYDOWN && wParam == VK_RETURN)
         {
             const HWND owner = reinterpret_cast<HWND>(referenceData);

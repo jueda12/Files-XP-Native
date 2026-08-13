@@ -91,6 +91,7 @@ target_compile_definitions(FilesXPNative PRIVATE
 if(MSVC)
     target_compile_options(FilesXPNative PRIVATE
         /W4
+        /WX
         /permissive-
         /EHsc
         /guard:cf
@@ -115,7 +116,7 @@ target_link_libraries(FilesXPNative PRIVATE
     shlwapi
     msimg32
     uuid)
-target_link_libraries(FilesXPNative PRIVATE propsys mpr oleacc)
+target_link_libraries(FilesXPNative PRIVATE propsys mpr oleacc uiautomationcore)
 target_link_libraries(FilesXPNative PRIVATE advapi32)
 
 set_target_properties(FilesXPNative PROPERTIES
