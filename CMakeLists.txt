@@ -8,3 +8,4 @@ endif()
 
 add_subdirectory(src/app)
 
+add_subdirectory(tests)

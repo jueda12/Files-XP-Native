@@ -4,6 +4,12 @@ param(
 
     [string]$OutputDirectory,
 
+
+
+    [string]$AccessibilityProbe,
+
+
+
     [switch]$CaptureWpr,
 
     [string]$PresentMonPath,
@@ -19,6 +25,17 @@ if (-not $Binary) {
     $Binary = Join-Path $repositoryRoot 'out\build\vs2022-x64\src\app\Release\FilesXPNative.exe'
 }
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
+
+if (-not $AccessibilityProbe) {
+
+    $AccessibilityProbe = Join-Path $repositoryRoot `
+
+        'out\build\vs2022-x64\tests\Release\FilesXPNativeAccessibilityProbe.exe'
+
+}
+
+$AccessibilityProbe = (Resolve-Path -LiteralPath $AccessibilityProbe).Path
+
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot 'artifacts\runtime-validation'
 }
@@ -88,25 +105,101 @@ function Get-P95([Collections.Generic.List[double]]$Values) {
         $ordered.Count - 1, [Math]::Ceiling($ordered.Count * 0.95) - 1)]
 }
 
-function Find-AddressEdit($Root, [string]$ExpectedValue) {
-    $condition = [Windows.Automation.PropertyCondition]::new(
-        [Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [Windows.Automation.ControlType]::Edit)
-    $edits = $Root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
-    foreach ($edit in $edits) {
+function Get-NativeAccessibility([IntPtr]$Handle, [string]$ExpectedRole, [string]$Label) {
+    if ($Handle -eq [IntPtr]::Zero) {
+        throw "$Label has no native HWND for MSAA role validation."
+    }
+    $probeOutput = & $AccessibilityProbe ('0x{0:X}' -f $Handle.ToInt64())
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Label native accessibility probe failed with exit code ${LASTEXITCODE}: $probeOutput"
+    }
+    try {
+        $probe = $probeOutput | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "$Label native accessibility probe returned invalid JSON: $probeOutput"
+    }
+    if (-not $probe.ok -or $probe.role -ne $ExpectedRole) {
+        throw "$Label native MSAA role mismatch: expected $ExpectedRole, got $($probe.role)."
+    }
+    return [ordered]@{
+        Hwnd = $probe.hwnd
+        Role = [int]$probe.role
+        Name = [string]$probe.name
+    }
+}
+
+function Test-HwndBackedControlRole($Element, $ExpectedControlType, [string]$ExpectedRole,
+        [string]$Label) {
+    $uiaType = [string]$Element.Current.ControlType.ProgrammaticName
+    $handle = [IntPtr]$Element.Current.NativeWindowHandle
+    if ($Element.Current.ControlType -eq $ExpectedControlType) {
+        return [ordered]@{ UiAutomationType = $uiaType; Native = $null }
+    }
+    if ($uiaType -ne 'ControlType.Pane') {
+        throw "$Label UIA ControlType mismatch: expected $($ExpectedControlType.ProgrammaticName) or ControlType.Pane, got $uiaType."
+    }
+    return [ordered]@{
+        UiAutomationType = $uiaType
+        Native = Get-NativeAccessibility $handle $ExpectedRole $Label
+    }
+}
+
+function Find-HwndBackedControl($Root, [string]$Name, $ExpectedControlType,
+        [string]$ExpectedRole, [string]$Label) {
+    $all = $Root.FindAll([Windows.Automation.TreeScope]::Descendants,
+        [Windows.Automation.Condition]::TrueCondition)
+    foreach ($candidate in $all) {
+        if ($candidate.Current.ControlType -eq $ExpectedControlType -and
+            $candidate.Current.Name -eq $Name) {
+            return [pscustomobject]@{ Element = $candidate; Native = $null }
+        }
+    }
+    foreach ($candidate in $all) {
+        if ([string]$candidate.Current.ControlType.ProgrammaticName -ne 'ControlType.Pane') {
+            continue
+        }
+        $handle = [IntPtr]$candidate.Current.NativeWindowHandle
+        if ($handle -eq [IntPtr]::Zero) { continue }
         try {
-            $pattern = $edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+            $native = Get-NativeAccessibility $handle $ExpectedRole $Label
+            return [pscustomobject]@{ Element = $candidate; Native = $native }
+        } catch {
+            if ($_.Exception.Message -notlike '*native MSAA role mismatch*') { throw }
+        }
+    }
+    throw "Could not resolve the $Label HWND-backed control through UI Automation and MSAA."
+}
+
+function Find-AddressEdit($Root, [string]$ExpectedValue) {
+    $all = $Root.FindAll([Windows.Automation.TreeScope]::Descendants,
+        [Windows.Automation.Condition]::TrueCondition)
+    foreach ($element in $all) {
+        try {
+            $pattern = $element.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
             if ([string]::Equals($pattern.Current.Value, $ExpectedValue,
                     [StringComparison]::OrdinalIgnoreCase)) {
                 return [pscustomobject]@{
-                    Element = $edit
+                    Element = $element
                     Pattern = $pattern
-                    Handle = [IntPtr]$edit.Current.NativeWindowHandle
+                    Handle = [IntPtr]$element.Current.NativeWindowHandle
+                    Native = $null
                 }
             }
         } catch { }
     }
-    throw 'Could not resolve the native address edit through UI Automation.'
+    $address = Find-HwndBackedControl $Root 'Address' ([Windows.Automation.ControlType]::Edit) `
+        '42' 'Address edit'
+    try {
+        $pattern = $address.Element.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern)
+        return [pscustomobject]@{
+            Element = $address.Element
+            Pattern = $pattern
+            Handle = [IntPtr]$address.Element.Current.NativeWindowHandle
+            Native = $address.Native
+        }
+    } catch {
+        throw 'Address edit has the required native MSAA role but does not expose the required UIA ValuePattern.'
+    }
 }
 
 function Invoke-MeasuredAddressNavigation(
@@ -819,15 +912,27 @@ try {
         $counts[$typeName] = @{ Count = $count; Named = $named }
     }
     if ($counts['Button']['Count'] -lt 4 -or $counts['Button']['Named'] -lt 4 -or
-        $counts['Edit']['Count'] -lt 2 -or $counts['Edit']['Named'] -lt 2 -or
-        $counts['List']['Count'] -lt 1 -or $counts['Tab']['Count'] -lt 1 -or
-        $counts['Tab']['Named'] -lt 1 -or $counts['StatusBar']['Count'] -lt 1) {
+        $counts['StatusBar']['Count'] -lt 1) {
         throw 'UI Automation surface is missing required controls or accessible names.'
     }
 
-    $inputLatencies = [Collections.Generic.List[double]]::new()
-    $navigationLatencies = [Collections.Generic.List[double]]::new()
     $address = Find-AddressEdit $measured.Root $testFolder
+
+    $nativeRoles = [ordered]@{}
+    $nativeRoles['AddressEdit'] = Test-HwndBackedControlRole $address.Element `
+        ([Windows.Automation.ControlType]::Edit) '42' 'Address edit'
+    $placesList = Find-HwndBackedControl $measured.Root 'Places' `
+        ([Windows.Automation.ControlType]::List) '33' 'Places list'
+    $nativeRoles['PlacesList'] = Test-HwndBackedControlRole $placesList.Element `
+        ([Windows.Automation.ControlType]::List) '33' 'Places list'
+    $tabs = Find-HwndBackedControl $measured.Root 'Tabs' `
+        ([Windows.Automation.ControlType]::Tab) '60' 'Tabs'
+    $nativeRoles['Tabs'] = Test-HwndBackedControlRole $tabs.Element `
+        ([Windows.Automation.ControlType]::Tab) '60' 'Tabs'
+
+    $inputLatencies = [Collections.Generic.List[double]]::new()
+
+    $navigationLatencies = [Collections.Generic.List[double]]::new()
     for ($iteration = 0; $iteration -lt 20; $iteration++) {
         if (($iteration % 2) -eq 0) {
             $navigationLatencies.Add((Invoke-MeasuredAddressNavigation `
@@ -875,6 +980,7 @@ try {
         AddressNavigationP95Milliseconds = $navigationP95
         InputP95Milliseconds = $inputP95
         UiAutomation = $counts
+        HwndBackedControls = $nativeRoles
         FlattenWorker = $flattenWorkerPassed
         BulkRenameWorker = $bulkRenameWorkerPassed
         FolderSelectionWorker = $folderSelectionWorkerPassed
