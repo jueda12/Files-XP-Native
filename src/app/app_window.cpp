@@ -784,35 +784,6 @@ namespace filesxp::app
 
 
 
-        void setAccessibleRole(HWND window, long role) noexcept
-
-        {
-
-            if (window == nullptr) return;
-
-            IAccPropServices* services{};
-
-            if (SUCCEEDED(CoCreateInstance(CLSID_AccPropServices, nullptr, CLSCTX_INPROC_SERVER,
-
-                    IID_IAccPropServices, reinterpret_cast<void**>(&services))))
-
-            {
-
-                VARIANT value{};
-
-                value.vt = VT_I4;
-
-                value.lVal = role;
-
-                services->SetHwndProp(window, OBJID_CLIENT, CHILDID_SELF, PROPID_ACC_ROLE, value);
-
-                services->Release();
-
-            }
-
-        }
-
-
         void fillSettingsDialog(HWND dialog, const core::AppSettings& settings)
         {
             SendDlgItemMessageW(dialog, IDC_SETTINGS_LANGUAGE, CB_SETCURSEL,
@@ -2694,15 +2665,10 @@ namespace filesxp::app
         ShowWindow(gitOutput_, SW_HIDE);
         ShowWindow(gitCancelButton_, SW_HIDE);
         setAccessibleName(placesList_, localizer_(Text::places));
-        setAccessibleRole(placesList_, ROLE_SYSTEM_LIST);
         setAccessibleName(tabControl_, localizer_(Text::tabsLabel));
-        setAccessibleRole(tabControl_, ROLE_SYSTEM_PAGETABLIST);
         setAccessibleName(addressEdit_, localizer_(Text::address));
-        setAccessibleRole(addressEdit_, ROLE_SYSTEM_TEXT);
         setAccessibleName(searchEdit_, localizer_(Text::searchCommand));
-        setAccessibleRole(searchEdit_, ROLE_SYSTEM_TEXT);
         setAccessibleName(statusBar_, localizer_(Text::statusLabel));
-        setAccessibleRole(statusBar_, ROLE_SYSTEM_STATUSBAR);
         setAccessibleName(textPreviewEdit_, localizer_(Text::quickPreview));
         setAccessibleName(gitOutput_, localizer_(Text::taskOutputLabel));
         populatePlaces();
