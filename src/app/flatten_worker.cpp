@@ -122,51 +122,60 @@ namespace filesxp::app
             if (FAILED(status) || (moveItems.empty() && folders.empty())) return status;
 
             IShellItem* root{};
-            IFileOperation* operation{};
             FileOperationProgressSink* sink = new (std::nothrow) FileOperationProgressSink(
                 cancel, window, archiveProgressMessage, generation);
-            DWORD cookie{};
-            bool advised{};
             if (sink == nullptr) status = E_OUTOFMEMORY;
             if (SUCCEEDED(status)) status = SHCreateItemFromParsingName(rootPath.c_str(), nullptr,
                 IID_PPV_ARGS(&root));
-            if (SUCCEEDED(status)) status = CoCreateInstance(CLSID_FileOperation, nullptr,
-                CLSCTX_ALL, IID_PPV_ARGS(&operation));
-            if (SUCCEEDED(status)) status = operation->SetOwnerWindow(window);
-            if (SUCCEEDED(status)) status = operation->SetOperationFlags(
-                FOF_ALLOWUNDO | FOF_RENAMEONCOLLISION);
-            if (SUCCEEDED(status))
+
+            const auto perform = [&](const std::vector<std::wstring>& paths, bool move) noexcept
             {
-                status = operation->Advise(sink, &cookie);
-                advised = SUCCEEDED(status);
-            }
-            for (const auto& path : moveItems)
-            {
-                if (FAILED(status)) break;
-                IShellItem* item{};
-                status = SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&item));
-                if (SUCCEEDED(status)) status = operation->MoveItem(item, root, nullptr, nullptr);
-                if (item != nullptr) item->Release();
-            }
-            for (const auto& path : folders)
-            {
-                if (FAILED(status)) break;
-                IShellItem* item{};
-                status = SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&item));
-                if (SUCCEEDED(status)) status = operation->DeleteItem(item, nullptr);
-                if (item != nullptr) item->Release();
-            }
-            if (SUCCEEDED(status)) status = operation->PerformOperations();
-            BOOL aborted{};
-            if (SUCCEEDED(status) && operation->GetAnyOperationsAborted(&aborted) == S_OK && aborted)
-                status = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+                IFileOperation* operation{};
+                DWORD cookie{};
+                bool advised{};
+                HRESULT operationStatus = CoCreateInstance(CLSID_FileOperation, nullptr,
+                    CLSCTX_ALL, IID_PPV_ARGS(&operation));
+                if (SUCCEEDED(operationStatus)) operationStatus = operation->SetOwnerWindow(window);
+                if (SUCCEEDED(operationStatus)) operationStatus = operation->SetOperationFlags(
+                    move ? FOF_ALLOWUNDO | FOF_RENAMEONCOLLISION : FOF_ALLOWUNDO);
+                if (SUCCEEDED(operationStatus))
+                {
+                    operationStatus = operation->Advise(sink, &cookie);
+                    advised = SUCCEEDED(operationStatus);
+                }
+                for (const auto& path : paths)
+                {
+                    if (SUCCEEDED(operationStatus)) operationStatus = cancellationStatus(cancel);
+                    if (FAILED(operationStatus)) break;
+                    IShellItem* item{};
+                    operationStatus = SHCreateItemFromParsingName(path.c_str(), nullptr,
+                        IID_PPV_ARGS(&item));
+                    if (SUCCEEDED(operationStatus))
+                        operationStatus = move ? operation->MoveItem(item, root, nullptr, nullptr) :
+                            operation->DeleteItem(item, nullptr);
+                    if (item != nullptr) item->Release();
+                }
+                if (SUCCEEDED(operationStatus)) operationStatus = operation->PerformOperations();
+                BOOL aborted{};
+                if (SUCCEEDED(operationStatus) &&
+                    operation->GetAnyOperationsAborted(&aborted) == S_OK && aborted)
+                    operationStatus = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+                if (operation != nullptr && advised) operation->Unadvise(cookie);
+                if (operation != nullptr) operation->Release();
+                return operationStatus;
+            };
+
+            // IFileOperation cannot resolve a single transaction that both moves a child and
+            // deletes that child's parent. Keep the dependency boundary explicit: move first,
+            // then delete only the now-empty folders in post-order.
+            if (SUCCEEDED(status)) status = perform(moveItems, true);
             if (SUCCEEDED(status)) status = cancellationStatus(cancel);
-            if (SUCCEEDED(status) && sink != nullptr && sink->failures() != 0)
+            if (SUCCEEDED(status)) status = perform(folders, false);
+            if (SUCCEEDED(status)) status = cancellationStatus(cancel);
+            if (SUCCEEDED(status) && sink->failures() != 0)
                 status = HRESULT_FROM_WIN32(ERROR_PARTIAL_COPY);
-            if (operation != nullptr && advised) operation->Unadvise(cookie);
-            if (operation != nullptr) operation->Release();
             if (root != nullptr) root->Release();
-            if (sink != nullptr) sink->Release();
+            sink->Release();
             if (SUCCEEDED(status))
             {
                 moved = moveItems.size();
