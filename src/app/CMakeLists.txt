@@ -105,6 +105,7 @@ if(MSVC)
         /NXCOMPAT
         /guard:cf
         /CETCOMPAT
+        $<$<CONFIG:Release>:/Brepro>
         $<$<CONFIG:Release>:/OPT:REF>
         $<$<CONFIG:Release>:/OPT:ICF>)
 endif()

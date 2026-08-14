@@ -82,6 +82,8 @@ try {
         Remove-Item -LiteralPath $zipPath -Force
     }
     Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zipPath -CompressionLevel Optimal
+    & (Join-Path $PSScriptRoot 'Normalize-ZipDosTimes.ps1') `
+        -InputPath $zipPath -OutputPath $zipPath
 
     $msixPath = Join-Path $artifactDirectory "Files-XP-Native-$version-$Architecture.msix"
     & (Join-Path $PSScriptRoot 'Build-MSIX.ps1') -Binary $binary -OutputPath $msixPath `

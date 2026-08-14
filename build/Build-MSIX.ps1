@@ -61,6 +61,8 @@ New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }
 & $makeAppx pack /d $stage /p $OutputPath /o
 if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed with exit code $LASTEXITCODE." }
+& (Join-Path $PSScriptRoot 'Normalize-ZipDosTimes.ps1') `
+    -InputPath $OutputPath -OutputPath $OutputPath
 
 if ($CertificatePath) {
     $signTool = Find-WindowsSdkTool 'signtool.exe'
