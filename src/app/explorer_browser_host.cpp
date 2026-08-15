@@ -832,6 +832,74 @@ namespace filesxp::app
         return executeStatus;
     }
 
+    HRESULT ExplorerBrowserHost::copySelectionToClipboard(bool move) noexcept
+    {
+        IShellView* view{};
+        HRESULT status = browser_->GetCurrentView(IID_PPV_ARGS(&view));
+        if (FAILED(status)) return status;
+        IDataObject* data{};
+        status = view->GetItemObject(SVGIO_SELECTION, IID_IDataObject,
+            reinterpret_cast<void**>(&data));
+        view->Release();
+        if (FAILED(status) || data == nullptr) return FAILED(status) ? status : E_FAIL;
+        if (move)
+        {
+            const CLIPFORMAT preferredDropEffect = static_cast<CLIPFORMAT>(
+                RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT));
+            FORMATETC format{preferredDropEffect, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+            STGMEDIUM medium{};
+            medium.tymed = TYMED_HGLOBAL;
+            medium.hGlobal = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, sizeof(DWORD));
+            void* effect = medium.hGlobal != nullptr ? GlobalLock(medium.hGlobal) : nullptr;
+            if (preferredDropEffect == 0 || effect == nullptr) status = E_OUTOFMEMORY;
+            else
+            {
+                *static_cast<DWORD*>(effect) = DROPEFFECT_MOVE;
+                GlobalUnlock(medium.hGlobal);
+                status = data->SetData(&format, &medium, TRUE);
+            }
+            if (FAILED(status) && medium.hGlobal != nullptr) GlobalFree(medium.hGlobal);
+        }
+        if (SUCCEEDED(status)) status = OleSetClipboard(data);
+        data->Release();
+        return status;
+    }
+
+    HRESULT ExplorerBrowserHost::pasteClipboard() noexcept
+    {
+        IDataObject* data{};
+        HRESULT status = OleGetClipboard(&data);
+        IShellItemArray* items{};
+        if (SUCCEEDED(status)) status = SHCreateShellItemArrayFromDataObject(data,
+            IID_PPV_ARGS(&items));
+        IShellItem* destination{};
+        if (SUCCEEDED(status)) status = currentFolderItem(&destination);
+        IFileOperation* operation{};
+        if (SUCCEEDED(status)) status = CoCreateInstance(CLSID_FileOperation, nullptr,
+            CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&operation));
+        if (SUCCEEDED(status)) operation->SetOperationFlags(
+            FOF_NOCONFIRMMKDIR | FOFX_ADDUNDORECORD | FOFX_RECYCLEONDELETE);
+        DWORD effect = DROPEFFECT_COPY;
+        FORMATETC format{static_cast<CLIPFORMAT>(RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT)),
+            nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+        STGMEDIUM medium{};
+        if (data != nullptr && SUCCEEDED(data->GetData(&format, &medium)))
+        {
+            void* raw = GlobalLock(medium.hGlobal);
+            if (raw != nullptr) effect = *static_cast<DWORD*>(raw);
+            if (raw != nullptr) GlobalUnlock(medium.hGlobal);
+            ReleaseStgMedium(&medium);
+        }
+        if (SUCCEEDED(status)) status = (effect & DROPEFFECT_MOVE) != 0 ?
+            operation->MoveItems(items, destination) : operation->CopyItems(items, destination);
+        if (SUCCEEDED(status)) status = operation->PerformOperations();
+        if (operation != nullptr) operation->Release();
+        if (destination != nullptr) destination->Release();
+        if (items != nullptr) items->Release();
+        if (data != nullptr) data->Release();
+        return status;
+    }
+
     HRESULT ExplorerBrowserHost::invokeSelectionVerb(const char* verb) noexcept
     {
         IFolderView2* view{};

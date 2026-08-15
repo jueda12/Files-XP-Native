@@ -568,9 +568,12 @@ namespace filesxp::app
         [[nodiscard]] std::uint32_t shortcutChord(WPARAM key) noexcept
         {
             std::uint32_t chord = static_cast<std::uint32_t>(key) & core::shortcutKeyMask;
-            if ((GetKeyState(VK_CONTROL) & 0x8000) != 0) chord |= core::shortcutControl;
-            if ((GetKeyState(VK_SHIFT) & 0x8000) != 0) chord |= core::shortcutShift;
-            if ((GetKeyState(VK_MENU) & 0x8000) != 0) chord |= core::shortcutAlt;
+            if ((GetKeyState(VK_CONTROL) & 0x8000) != 0 ||
+                (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) chord |= core::shortcutControl;
+            if ((GetKeyState(VK_SHIFT) & 0x8000) != 0 ||
+                (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) chord |= core::shortcutShift;
+            if ((GetKeyState(VK_MENU) & 0x8000) != 0 ||
+                (GetAsyncKeyState(VK_MENU) & 0x8000) != 0) chord |= core::shortcutAlt;
             return chord;
         }
 
@@ -2102,7 +2105,6 @@ namespace filesxp::app
             dpi_ = GetDpiForWindow(window_);
             uiFont_ = xp::createUiFont(dpi_);
             createChildren();
-            createMainMenu();
             applySettings();
             return 0;
 
@@ -3313,7 +3315,6 @@ namespace filesxp::app
             showError(L"Create tab", status);
             return false;
         }
-        browser->setInitialView(settings_.defaultView);
         browser->show(index == activeTab_);
         tab.browser = browser;
         std::wstring location = tab.pendingLocation;
@@ -3694,7 +3695,6 @@ namespace filesxp::app
             }
             tab.secondaryBrowser = secondary;
             tab.activePane = 1;
-            secondary->setInitialView(settings_.defaultView);
             if (initialLocation.empty()) initialLocation = tab.browser->restorableName();
             const HRESULT browseStatus = initialLocation.empty()
                 ? secondary->browseKnownFolder(FOLDERID_ComputerFolder)
@@ -4184,8 +4184,8 @@ namespace filesxp::app
 
     bool AppWindow::backgroundTaskActive() const noexcept
     {
-        return gitWorkerActive_ || archiveWorkerActive_ || ftpWorkerActive_ || shellSnapshotActive_ ||
-            tagResultsActive_ || !tagSearchPath_.empty();
+        return (gitWorkerActive_ && !gitWorkerQuiet_) || archiveWorkerActive_ ||
+            ftpWorkerActive_ || shellSnapshotActive_ || tagResultsActive_ || !tagSearchPath_.empty();
     }
 
     bool AppWindow::launchProcess(const std::wstring& executable,
@@ -4457,7 +4457,7 @@ namespace filesxp::app
     {
         KillTimer(window_, gitStatusTimerId);
         // ponytail: Repository access and process creation both stay outside the UI thread.
-        if (backgroundTaskActive())
+        if (gitWorkerActive_ || backgroundTaskActive())
         {
             if (!quiet)
                 MessageBoxW(window_, localizer_(Text::gitRunning), localizer_(Text::title),
@@ -6623,7 +6623,8 @@ namespace filesxp::app
                 (settings_.enabled(core::enableQuickPreview) ? MF_ENABLED : MF_GRAYED));
             DrawMenuBar(window_);
         }
-        layoutChildren(clientWidth_, clientHeight_);
+        if (clientWidth_ > 0 && clientHeight_ > 0)
+            layoutChildren(clientWidth_, clientHeight_);
         updateChrome();
         if (!settings_.enabled(core::enableGit))
         {
@@ -7488,9 +7489,9 @@ namespace filesxp::app
         {
         case CommandId::newFolder: createShellItem(true); return;
         case CommandId::newFile: createShellItem(false); return;
-        case CommandId::cut: status = browser->executeOleCommand(OLECMDID_CUT); break;
-        case CommandId::copy: status = browser->executeOleCommand(OLECMDID_COPY); break;
-        case CommandId::paste: status = browser->executeOleCommand(OLECMDID_PASTE); break;
+        case CommandId::cut: status = browser->copySelectionToClipboard(true); break;
+        case CommandId::copy: status = browser->copySelectionToClipboard(false); break;
+        case CommandId::paste: status = browser->pasteClipboard(); break;
         case CommandId::pasteShortcut:
             status = browser->invokeBackgroundVerb("pastelink");
             break;

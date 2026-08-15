@@ -1,9 +1,22 @@
-.vs/
+# Build output
 out/
+
+# Local profiling, traces, symbol caches, and generated packages
 artifacts/
-build-local/
+raw-logs/
+
+# Local IDE/editor state
+.vs/
+.vscode/
 *.user
 *.suo
-*.VC.db
-*.VC.opendb
 
+# Generated archives and installers
+*.etl
+*.wpaPresets
+*.wpaprofile
+*.msix
+*.msixbundle
+*.zip
+
+build-local/

@@ -55,6 +55,8 @@ namespace filesxp::app
         HRESULT clearSelection() noexcept;
         HRESULT invertSelection() noexcept;
         HRESULT executeOleCommand(DWORD command) noexcept;
+        HRESULT copySelectionToClipboard(bool move) noexcept;
+        HRESULT pasteClipboard() noexcept;
         HRESULT invokeSelectionVerb(const char* verb) noexcept;
         HRESULT invokeBackgroundVerb(const char* verb) noexcept;
         HRESULT autoSizeColumns() noexcept;

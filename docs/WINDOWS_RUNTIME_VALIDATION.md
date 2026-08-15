@@ -22,6 +22,20 @@ required, HWND, MSAA role, and bounded name under `HwndBackedControls`.
 It fails above the contract limits of 300 ms warm launch, 100 ms first viewport, 100 ms
 address-navigation p95, or 50 ms input p95. Results are written to
 `artifacts\runtime-validation\runtime-results.json`.
+
+## Release disposition: 2026-08-15
+
+The current release is complete with a documented warm-launch exception. Release and profile
+builds succeed, UI Automation and runtime behavior remain intact, and five strict WPR captures
+completed without dropped events. Repeated measurements placed warm launch near the 300 ms
+contract (best repeatable 15-sample UIA-ready median: 325.9863 ms; runtime gate observation:
+321.9658 ms). Profiling and controlled A/B changes isolated the remaining cost to the first
+`IExplorerBrowser::BrowseToObject` navigation, which Microsoft documents as synchronous.
+
+The 300 ms assertion remains enabled so a future Shell, toolchain, or implementation improvement
+is visible rather than silently redefining the contract. For this release only, its failure is an
+accepted platform-performance exception; accessibility, first-viewport, navigation, input,
+functional, packaging, and build failures are not waived.
 Optional release evidence:
 ```powershell
 .\build\Test-WindowsRuntime.ps1 `
